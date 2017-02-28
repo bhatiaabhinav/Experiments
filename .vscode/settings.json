@@ -1,0 +1,6 @@
+// Place your settings in this file to overwrite default and user settings.
+{
+    "python.pythonPath": "${workspaceRoot}/venv/scripts/python.exe",
+    //"python.pythonPath": "${workspaceRoot}/venv_tf_cpu/scripts/python.exe",
+    "python.linting.pylintEnabled": false
+}

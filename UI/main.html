@@ -1,0 +1,22 @@
+<img id="img"/>
+
+<canvas id="myCanvas" width="320" height="420"></canvas>
+
+<script type="text/javascript" src="jquery-3.1.1.min.js"></script>
+
+<script>
+    refresh = function() {
+        //$("#img").attr("src", "/frame.png?timestamp=" + new Date().getTime());
+        //alert("hello");
+       
+        //var img=document.getElementById("img");
+        img = new Image()
+        img.src = "/frame.png?timestamp=" + new Date().getTime();
+        img.onload = function() {
+            var c=document.getElementById("myCanvas");
+            var ctx=c.getContext('2d');
+            ctx.drawImage(img,0,0);
+        }
+    }
+    setInterval(refresh, 1000/30);
+</script>

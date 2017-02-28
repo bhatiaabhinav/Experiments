@@ -1,0 +1,14 @@
+C:\Users\Abhinav Bhatia\Documents\workspace\Experiments\UI\Monitor\Monitor\bin\Debug\Monitor.exe.config
+C:\Users\Abhinav Bhatia\Documents\workspace\Experiments\UI\Monitor\Monitor\bin\Debug\Monitor.exe
+C:\Users\Abhinav Bhatia\Documents\workspace\Experiments\UI\Monitor\Monitor\bin\Debug\Monitor.pdb
+C:\Users\Abhinav Bhatia\Documents\workspace\Experiments\UI\Monitor\Monitor\obj\Debug\Monitor.csprojResolveAssemblyReference.cache
+C:\Users\Abhinav Bhatia\Documents\workspace\Experiments\UI\Monitor\Monitor\obj\Debug\MainWindow.g.cs
+C:\Users\Abhinav Bhatia\Documents\workspace\Experiments\UI\Monitor\Monitor\obj\Debug\App.g.cs
+C:\Users\Abhinav Bhatia\Documents\workspace\Experiments\UI\Monitor\Monitor\obj\Debug\Monitor_MarkupCompile.cache
+C:\Users\Abhinav Bhatia\Documents\workspace\Experiments\UI\Monitor\Monitor\obj\Debug\Monitor_MarkupCompile.lref
+C:\Users\Abhinav Bhatia\Documents\workspace\Experiments\UI\Monitor\Monitor\obj\Debug\MainWindow.baml
+C:\Users\Abhinav Bhatia\Documents\workspace\Experiments\UI\Monitor\Monitor\obj\Debug\Monitor.g.resources
+C:\Users\Abhinav Bhatia\Documents\workspace\Experiments\UI\Monitor\Monitor\obj\Debug\Monitor.Properties.Resources.resources
+C:\Users\Abhinav Bhatia\Documents\workspace\Experiments\UI\Monitor\Monitor\obj\Debug\Monitor.csproj.GenerateResource.Cache
+C:\Users\Abhinav Bhatia\Documents\workspace\Experiments\UI\Monitor\Monitor\obj\Debug\Monitor.exe
+C:\Users\Abhinav Bhatia\Documents\workspace\Experiments\UI\Monitor\Monitor\obj\Debug\Monitor.pdb
