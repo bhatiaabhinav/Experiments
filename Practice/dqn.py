@@ -157,7 +157,7 @@ copyToTargetBrain = [tW_conv1.assign(W_conv1),tb_conv1.assign(b_conv1),tW_conv2.
 
 #Below we obtain the loss by taking the sum of squares difference between the target and prediction Q values.
 nextQ = tf.placeholder(shape=[None,n_outputs],dtype=tf.float32)
-loss = tf.reduce_sum(tf.square(nextQ - Q))
+loss = tf.reduce_mean(tf.square(nextQ - Q))
 loss_feed = tf.placeholder(tf.float32)
 tf.summary.scalar('loss', loss_feed)
 trainer = tf.train.RMSPropOptimizer(learning_rate, decay, momentum, epsilon)
