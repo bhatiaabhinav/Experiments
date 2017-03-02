@@ -154,13 +154,16 @@ def createBrain(name_scope):
 input_state_feed, W_conv1,b_conv1,W_conv2,b_conv2,W_conv3,b_conv3,W_fc1,b_fc1,W_fc2,b_fc2, Q, best_action, av_action_value = createBrain('Brain')
 tinput_state_feed, tW_conv1,tb_conv1,tW_conv2,tb_conv2,tW_conv3,tb_conv3,tW_fc1,tb_fc1,tW_fc2,tb_fc2, tQ, tbest_action, tav_action_value = createBrain('TargetBrain')
 copyToTargetBrain = [tW_conv1.assign(W_conv1),tb_conv1.assign(b_conv1),tW_conv2.assign(W_conv2),tb_conv2.assign(b_conv2),tW_conv3.assign(W_conv3),tb_conv3.assign(b_conv3),tW_fc1.assign(W_fc1),tb_fc1.assign(b_fc1),tW_fc2.assign(W_fc2),tb_fc2.assign(b_fc2)]
+tf.summary.image('first_conv_layer', tf.transpose(W_conv1, perm=[3,0,1,2]), max_outputs=32)
+
 
 #Below we obtain the loss by taking the sum of squares difference between the target and prediction Q values.
 nextQ = tf.placeholder(shape=[None,n_outputs],dtype=tf.float32)
 loss = tf.reduce_mean(tf.square(nextQ - Q))
 loss_feed = tf.placeholder(tf.float32)
 tf.summary.scalar('loss', loss_feed)
-trainer = tf.train.RMSPropOptimizer(learning_rate, decay, momentum, epsilon)
+#trainer = tf.train.RMSPropOptimizer(learning_rate, decay, momentum, epsilon)
+trainer = tf.train.AdamOptimizer(learning_rate)
 updateModel = trainer.minimize(loss)
 
 
@@ -281,7 +284,7 @@ def chooseAction(s, sess):
 
 init = tf.initialize_all_variables()
 merged = tf.summary.merge_all()
-writer = tf.summary.FileWriter('logs/run' + str(run_no) +  '_rms_dqn_perbp_ec_' + str(env_name) + "_" + str(learning_rate) + '_' + str(decay) + '_' + str(momentum) + '_' + str(epsilon))
+writer = tf.summary.FileWriter('logs/run' + str(run_no) +  '_adam_dqn_' + str(env_name) + "_" + str(learning_rate) + '_' + str(decay) + '_' + str(momentum) + '_' + str(epsilon))
 
 with tf.Session() as sess:
     writer.add_graph(sess.graph)
