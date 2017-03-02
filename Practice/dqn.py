@@ -30,6 +30,9 @@ batch_size = 32
 reserved_list_max_size = 2
 priority_list_max_size = 16
 
+adam = True
+double_dqn = True
+
 render = False
 render_output_path = "UI/frame.png"
 render_repeat = 4
@@ -41,6 +44,7 @@ config_update_frequency = 6
 
 def readConfig():
     global env_name, learning_rate, momentum, decay, epsilon, error_clipping, y, e_initial, e_decay, e_final, observe, target_update_frequency, update_frequency, action_repeat, replay_memory_size, batch_size, reserved_list_max_size, priority_list_max_size, render, render_output_path, render_repeat, summary_update_frequency, run_no, config_update_frequency
+    global double_dqn, adam
 
     config = configparser.ConfigParser()
     config.read('config.ini')
@@ -52,6 +56,7 @@ def readConfig():
     decay = config.getfloat('optimizer', 'decay')
     epsilon = config.getfloat('optimizer', 'epsilon')
     error_clipping = config.getboolean('optimizer', 'error_clipping')
+    adam = config.getboolean('optimizer', 'adam')
 
     y = config.getfloat('RL', 'y')
     e_initial = config.getfloat('RL', 'e_initial')
@@ -65,6 +70,7 @@ def readConfig():
     batch_size = config.getint('RL', 'batch_size')
     reserved_list_max_size = config.getint('RL', 'reserved_list_max_size')
     priority_list_max_size = config.getint('RL', 'priority_list_max_size')
+    double_dqn = config.getboolean('RL', 'double_dqn')
 
     render = config.getboolean('rendering', 'render')
     render_output_path = config.get('rendering', 'render_output_path')
@@ -162,8 +168,10 @@ nextQ = tf.placeholder(shape=[None,n_outputs],dtype=tf.float32)
 loss = tf.reduce_mean(tf.square(nextQ - Q))
 loss_feed = tf.placeholder(tf.float32)
 tf.summary.scalar('loss', loss_feed)
-#trainer = tf.train.RMSPropOptimizer(learning_rate, decay, momentum, epsilon)
-trainer = tf.train.AdamOptimizer(learning_rate)
+if adam:
+    trainer = tf.train.AdamOptimizer(learning_rate)
+else:
+    trainer = tf.train.RMSPropOptimizer(learning_rate, decay, momentum, epsilon)
 updateModel = trainer.minimize(loss)
 
 
@@ -284,7 +292,8 @@ def chooseAction(s, sess):
 
 init = tf.initialize_all_variables()
 merged = tf.summary.merge_all()
-writer = tf.summary.FileWriter('logs/run' + str(run_no) +  '_adam_dqn_' + str(env_name) + "_" + str(learning_rate) + '_' + str(decay) + '_' + str(momentum) + '_' + str(epsilon))
+writer = tf.summary.FileWriter('logs/run' + str(run_no) +  '_dqn_' + '_adam-' + str(adam) + '_'
+    + '_double-' + str(double_dqn) + '_' + str(env_name) + "_" + str(learning_rate) + '_' + str(decay) + '_' + str(momentum) + '_' + str(epsilon))
 
 with tf.Session() as sess:
     writer.add_graph(sess.graph)
@@ -319,22 +328,19 @@ with tf.Session() as sess:
             #do learning here
             if (f > observe and f % update_frequency == 0 and experience_count > batch_size):
                 #get random experiences:
-                # batch_list = random.sample(experience, batch_size)
-                # batch = np.array(batch_list)
-                # nextStates = np.array([list(z[3][0]) for z in batch_list])
-                # startStates = np.array([list(z[0][0]) for z in batch_list])
-                # actions = [z[1] for z in batch_list]
-                # rewards = [z[2] for z in batch_list]
-                # terminals = [z[4] for z in batch_list]
                 exp_ids, startStates, actions, nextStates, rewards, terminals = getRandomBatchFromExperience()
                 targets = sess.run(Q, feed_dict={input_state_feed:startStates})
-                #next_best_actions = sess.run(best_action, feed_dict={input_state_feed:nextStates})
+                if double_dqn:
+                    next_best_actions = sess.run(best_action, feed_dict={input_state_feed:nextStates})
                 Q1 = sess.run(tQ, feed_dict={tinput_state_feed:nextStates})
                 for x in range(batch_size):
                     if terminals[x]:
                         err = rewards[x] - targets[x, actions[x]]
                     else:
-                        err = rewards[x] + y * np.max(Q1[x])- targets[x, actions[x]]
+                        if double_dqn:
+                            err = rewards[x] + y * Q1[x, next_best_actions[x]] - targets[x, actions[x]]
+                        else:
+                            err = rewards[x] + y * np.max(Q1[x])- targets[x, actions[x]]
                     ifNeededAddToPriorityExperiences((exp_ids[x] - 1) % replay_memory_size, err)
                     current_error += 0.5 * (err - current_error)
                     # to stabilize training:
