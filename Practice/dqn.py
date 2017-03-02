@@ -125,10 +125,15 @@ def createBrain(name_scope):
         b_conv2 = bias_variable([64])
         W_conv3 = weight_variable([3,3,64,64])
         b_conv3 = bias_variable([64])
-        W_fc1 = weight_variable([3136,512])
-        b_fc1 = bias_variable([512])
-        W_fc2 = weight_variable([512,n_outputs])
-        b_fc2 = bias_variable([n_outputs])
+        W_fc1_v = weight_variable([3136,512])
+        b_fc1_v = bias_variable([512])
+        W_fc1_a = weight_variable([3136,512])
+        b_fc1_a = bias_variable([512])
+        #the final layer for value and advantage respectively:
+        W_fc2_v = weight_variable([512,1])
+        b_fc2_v = bias_variable([1])
+        W_fc2_a = weight_variable([512,n_outputs])
+        b_fc2_a = bias_variable([n_outputs])
 
         input_state_feed = tf.placeholder(tf.uint8, [None, 84, 84, 4], name=name_scope+'input_state_feed')
         input_state_feed_float = tf.cast(input_state_feed, tf.float32)
@@ -141,10 +146,17 @@ def createBrain(name_scope):
         h_conv3_shape = h_conv3.get_shape().as_list()
         #print "dimension:",h_conv3_shape[1]*h_conv3_shape[2]*h_conv3_shape[3]
         h_conv3_flat = tf.reshape(h_conv3,[-1,3136])
-        h_fc1 = tf.nn.relu(tf.matmul(h_conv3_flat,W_fc1) + b_fc1)
+        h_fc1_v = tf.nn.relu(tf.matmul(h_conv3_flat,W_fc1_v) + b_fc1_v)
+        h_fc1_a = tf.nn.relu(tf.matmul(h_conv3_flat,W_fc1_a) + b_fc1_a)
+
+        # Value layer
+        V = tf.matmul(h_fc1_v, W_fc2_v) + b_fc2_v
+
+        # Value layer
+        A = tf.matmul(h_fc1_a, W_fc2_a) + b_fc2_a
 
 		# Q Value layer
-        Q = tf.matmul(h_fc1,W_fc2) + b_fc2
+        Q = V + A - (A/tf.reshape(tf.reduce_mean(A, axis=1),[-1,1]))
         
         # conv1 = tf.layers.conv2d(input_state_feed, filters = 32, kernel_size = [8,8], strides=(4,4), kernel_initializer=weight_intializer, bias_initializer=bias_initializer, activation=tf.nn.relu, name=name_scope+'conv1')
         # conv2 = tf.layers.conv2d(conv1, filters = 64, kernel_size = [4,4], strides = (2, 2), kernel_initializer=weight_intializer, bias_initializer=bias_initializer, activation = tf.nn.relu, name=name_scope+'conv2')
@@ -154,12 +166,14 @@ def createBrain(name_scope):
         # Q = tf.layers.dense(full1, units = n_outputs, kernel_initializer=weight_intializer, bias_initializer=bias_initializer, name=name_scope+'Q')
         best_action = tf.argmax(Q,1, name=name_scope+'best_action')
         av_action_value = tf.reduce_mean(Q,1,name=name_scope+'av_action_value')
-        return input_state_feed, W_conv1,b_conv1,W_conv2,b_conv2,W_conv3,b_conv3,W_fc1,b_fc1,W_fc2,b_fc2, Q, best_action, av_action_value
+        return input_state_feed, W_conv1,b_conv1,W_conv2,b_conv2,W_conv3,b_conv3,W_fc1_v,b_fc1_v,W_fc1_a,b_fc1_a,W_fc2_v,b_fc2_v,W_fc2_a,b_fc2_a, Q, best_action, av_action_value
 
 #These lines establish the feed-forward part of the network used to choose actions
-input_state_feed, W_conv1,b_conv1,W_conv2,b_conv2,W_conv3,b_conv3,W_fc1,b_fc1,W_fc2,b_fc2, Q, best_action, av_action_value = createBrain('Brain')
-tinput_state_feed, tW_conv1,tb_conv1,tW_conv2,tb_conv2,tW_conv3,tb_conv3,tW_fc1,tb_fc1,tW_fc2,tb_fc2, tQ, tbest_action, tav_action_value = createBrain('TargetBrain')
-copyToTargetBrain = [tW_conv1.assign(W_conv1),tb_conv1.assign(b_conv1),tW_conv2.assign(W_conv2),tb_conv2.assign(b_conv2),tW_conv3.assign(W_conv3),tb_conv3.assign(b_conv3),tW_fc1.assign(W_fc1),tb_fc1.assign(b_fc1),tW_fc2.assign(W_fc2),tb_fc2.assign(b_fc2)]
+input_state_feed, W_conv1,b_conv1,W_conv2,b_conv2,W_conv3,b_conv3,W_fc1_v,b_fc1_v,W_fc1_a,b_fc1_a,W_fc2_v,b_fc2_v,W_fc2_a,b_fc2_a, Q, best_action, av_action_value = createBrain('Brain')
+tinput_state_feed, tW_conv1,tb_conv1,tW_conv2,tb_conv2,tW_conv3,tb_conv3,tW_fc1_v,tb_fc1_v,tW_fc1_a,tb_fc1_a,tW_fc2_v,tb_fc2_v,tW_fc2_a,tb_fc2_a, tQ, tbest_action, tav_action_value = createBrain('TargetBrain')
+copyToTargetBrain = [tW_conv1.assign(W_conv1),tb_conv1.assign(b_conv1),tW_conv2.assign(W_conv2),tb_conv2.assign(b_conv2),tW_conv3.assign(W_conv3),tb_conv3.assign(b_conv3),
+                    tW_fc1_v.assign(W_fc1_v),tb_fc1_v.assign(b_fc1_v),tW_fc2_v.assign(W_fc2_v),tb_fc2_v.assign(b_fc2_v),
+                    tW_fc1_a.assign(W_fc1_a),tb_fc1_a.assign(b_fc1_a),tW_fc2_a.assign(W_fc2_a),tb_fc2_a.assign(b_fc2_a)]
 tf.summary.image('first_conv_layer', tf.transpose(W_conv1, perm=[3,0,1,2]), max_outputs=32)
 
 
@@ -292,8 +306,7 @@ def chooseAction(s, sess):
 
 init = tf.initialize_all_variables()
 merged = tf.summary.merge_all()
-writer = tf.summary.FileWriter('logs/run' + str(run_no) +  '_dqn_' + '_adam-' + str(adam) + '_'
-    + '_double-' + str(double_dqn) + '_' + str(env_name) + "_" + str(learning_rate) + '_' + str(decay) + '_' + str(momentum) + '_' + str(epsilon))
+writer = tf.summary.FileWriter('logs/run' + str(run_no) +  '_dualing_double_dqn_ec_' + '_adam-' + str(adam) + '_' + str(env_name) + "_" + str(learning_rate) + '_' + str(decay) + '_' + str(momentum) + '_' + str(epsilon))
 
 with tf.Session() as sess:
     writer.add_graph(sess.graph)
