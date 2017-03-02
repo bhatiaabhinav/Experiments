@@ -1,0 +1,12 @@
+*.pdf
+.vscode/*
+MNIST_data/*
+atari-py/
+gym/
+node_modules/
+*.lnk
+venv*
+logs/
+*bin/
+*obj/
+UI/frame.png
