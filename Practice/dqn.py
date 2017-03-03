@@ -16,6 +16,7 @@ momentum = 0.95
 decay = 0.95
 epsilon = 0.01
 error_clipping = True
+restore_model = True
 
 y = 0.99
 e_initial = 1
@@ -44,7 +45,7 @@ config_update_frequency = 6
 
 def readConfig():
     global env_name, learning_rate, momentum, decay, epsilon, error_clipping, y, e_initial, e_decay, e_final, observe, target_update_frequency, update_frequency, action_repeat, replay_memory_size, batch_size, reserved_list_max_size, priority_list_max_size, render, render_output_path, render_repeat, summary_update_frequency, run_no, config_update_frequency
-    global double_dqn, adam
+    global double_dqn, adam, restore_model
 
     config = configparser.ConfigParser()
     config.read('config.ini')
@@ -57,6 +58,7 @@ def readConfig():
     epsilon = config.getfloat('optimizer', 'epsilon')
     error_clipping = config.getboolean('optimizer', 'error_clipping')
     adam = config.getboolean('optimizer', 'adam')
+    restore_model = config.getboolean('optimizer', 'restore_model')
 
     y = config.getfloat('RL', 'y')
     e_initial = config.getfloat('RL', 'e_initial')
@@ -307,17 +309,25 @@ def chooseAction(s, sess):
 init = tf.initialize_all_variables()
 merged = tf.summary.merge_all()
 writer = tf.summary.FileWriter('logs/run' + str(run_no) +  '_dualing_double_dqn_ec_' + '_adam-' + str(adam) + '_' + str(env_name) + "_" + str(learning_rate) + '_' + str(decay) + '_' + str(momentum) + '_' + str(epsilon))
+saver = tf.train.Saver()
 
 with tf.Session() as sess:
     writer.add_graph(sess.graph)
     sess.run(init)
     sess.run(copyToTargetBrain)
+    if restore_model:
+        try:
+            saver.restore(sess, "logs/model.ckpt")
+        except Exception:
+            print('Could not restore model')
     ep_no = 0
+    rAll = 0
     while True:
         #Reset environment and get first new observation
         obs = env.reset()
         s = getCurState(obs, sess)
         a = env.action_space.sample()
+        lastrAll = rAll
         rAll = 0
         d = False
         j = 0
@@ -374,8 +384,9 @@ with tf.Session() as sess:
                                                     epsilon_feed:e,
                                                     err_feed:current_error,
                                                     av_action_value_feed:current_av_action_value,
-                                                    rAll_feed: rAll}),
+                                                    rAll_feed: lastrAll}),
                                                     f)
+                saver.save(sess, "logs/model.ckpt")
 
             if f % config_update_frequency == 0:
                 readConfig()
