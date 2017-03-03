@@ -11,6 +11,10 @@ import heapq
 
 env_name = 'Breakout-v0'
 
+pause = False
+play_mode = False
+learn_only_mode = False
+
 learning_rate = 0.00025
 momentum = 0.95
 decay = 0.95
@@ -45,12 +49,16 @@ config_update_frequency = 6
 
 def readConfig():
     global env_name, learning_rate, momentum, decay, epsilon, error_clipping, y, e_initial, e_decay, e_final, observe, target_update_frequency, update_frequency, action_repeat, replay_memory_size, batch_size, reserved_list_max_size, priority_list_max_size, render, render_output_path, render_repeat, summary_update_frequency, run_no, config_update_frequency
-    global double_dqn, adam, restore_model
+    global double_dqn, adam, restore_model, play_mode, pause, learn_only_mode
 
     config = configparser.ConfigParser()
     config.read('config.ini')
 
     env_name = config.get('environment', 'env_name')
+
+    play_mode = config.getboolean('app', 'play_mode')
+    pause = config.getboolean('app', 'pause')
+    learn_only_mode = config.getboolean('app', 'learn_only_mode')
 
     learning_rate = config.getfloat('optimizer', 'learning_rate')
     momentum = config.getfloat('optimizer', 'momentum')
@@ -288,7 +296,7 @@ def getCurState(cur_raw_signal, sess):
 
 def chooseAction(s, sess):
     #choose an action
-    if f < observe:
+    if not play_mode and f < observe:
         return env.action_space.sample()
 
     global e
@@ -296,7 +304,7 @@ def chooseAction(s, sess):
         e = e / e_decay
     else:
         e = e_final
-    if (np.random.rand(1) > e):
+    if (np.random.rand(1) > e or play_mode):
         global current_av_action_value
         a, current_av_action_value = sess.run([best_action, av_action_value], feed_dict={input_state_feed:s})
         a = a[0]
@@ -349,7 +357,7 @@ with tf.Session() as sess:
             exp_id = addToExperience(s, a, s1, r, d, True)
 
             #do learning here
-            if (f > observe and f % update_frequency == 0 and experience_count > batch_size):
+            if (not play_mode and f > observe and f % update_frequency == 0 and experience_count > batch_size):
                 #get random experiences:
                 exp_ids, startStates, actions, nextStates, rewards, terminals = getRandomBatchFromExperience()
                 targets = sess.run(Q, feed_dict={input_state_feed:startStates})
@@ -374,7 +382,7 @@ with tf.Session() as sess:
 
                 _,current_loss = sess.run([updateModel,loss],feed_dict={input_state_feed:startStates,nextQ:targets})
 
-            if (f % target_update_frequency == 0):
+            if (not play_mode and f % target_update_frequency == 0):
                 sess.run(copyToTargetBrain)
 
             if f % summary_update_frequency == 0:
@@ -386,6 +394,8 @@ with tf.Session() as sess:
                                                     av_action_value_feed:current_av_action_value,
                                                     rAll_feed: lastrAll}),
                                                     f)
+            
+            if f % 100000 == 0:
                 saver.save(sess, "logs/model.ckpt")
 
             if f % config_update_frequency == 0:
