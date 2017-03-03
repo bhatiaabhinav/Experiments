@@ -166,7 +166,7 @@ def createBrain(name_scope):
         A = tf.matmul(h_fc1_a, W_fc2_a) + b_fc2_a
 
 		# Q Value layer
-        Q = V + A - (A/tf.reshape(tf.reduce_mean(A, axis=1),[-1,1]))
+        Q = V + A - tf.reshape(tf.reduce_mean(A, axis=1), [-1,1])
         
         # conv1 = tf.layers.conv2d(input_state_feed, filters = 32, kernel_size = [8,8], strides=(4,4), kernel_initializer=weight_intializer, bias_initializer=bias_initializer, activation=tf.nn.relu, name=name_scope+'conv1')
         # conv2 = tf.layers.conv2d(conv1, filters = 64, kernel_size = [4,4], strides = (2, 2), kernel_initializer=weight_intializer, bias_initializer=bias_initializer, activation = tf.nn.relu, name=name_scope+'conv2')
