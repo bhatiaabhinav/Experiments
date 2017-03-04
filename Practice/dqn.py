@@ -31,6 +31,7 @@ target_update_frequency = 5000
 update_frequency = 4
 action_repeat = 4
 replay_memory_size = 100000
+no_op_max = 30
 batch_size = 32
 reserved_list_max_size = 2
 priority_list_max_size = 16
@@ -48,7 +49,7 @@ run_no = 38
 config_update_frequency = 6
 
 def readConfig():
-    global env_name, learning_rate, momentum, decay, epsilon, error_clipping, y, e_initial, e_decay, e_final, observe, target_update_frequency, update_frequency, action_repeat, replay_memory_size, batch_size, reserved_list_max_size, priority_list_max_size, render, render_output_path, render_repeat, summary_update_frequency, run_no, config_update_frequency
+    global env_name, learning_rate, momentum, decay, epsilon, error_clipping, y, e_initial, e_decay, e_final, observe, target_update_frequency, update_frequency, action_repeat, replay_memory_size, no_op_max, batch_size, reserved_list_max_size, priority_list_max_size, render, render_output_path, render_repeat, summary_update_frequency, run_no, config_update_frequency
     global double_dqn, adam, restore_model, play_mode, pause, learn_only_mode
 
     config = configparser.ConfigParser()
@@ -77,6 +78,7 @@ def readConfig():
     update_frequency = config.getint('RL', 'update_frequency')
     action_repeat = config.getint('RL', 'action_repeat')
     replay_memory_size = config.getint('RL', 'replay_memory_size')
+    no_op_max = config.getint('RL', 'no_op_max')
     batch_size = config.getint('RL', 'batch_size')
     reserved_list_max_size = config.getint('RL', 'reserved_list_max_size')
     priority_list_max_size = config.getint('RL', 'priority_list_max_size')
@@ -319,7 +321,10 @@ merged = tf.summary.merge_all()
 writer = tf.summary.FileWriter('logs/run' + str(run_no) +  '_dualing_double_dqn_ec_' + '_adam-' + str(adam) + '_' + str(env_name) + "_" + str(learning_rate) + '_' + str(decay) + '_' + str(momentum) + '_' + str(epsilon))
 saver = tf.train.Saver()
 
-with tf.Session() as sess:
+config = tf.ConfigProto()
+config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
+
+with tf.Session(config=config) as sess:
     writer.add_graph(sess.graph)
     sess.run(init)
     sess.run(copyToTargetBrain)
@@ -331,8 +336,11 @@ with tf.Session() as sess:
     ep_no = 0
     rAll = 0
     while True:
-        #Reset environment and get first new observation
+        # Reset environment and get first new observation
         obs = env.reset()
+        # Let go off a random number of frames without any action so that agent faces a random start
+        for i in range(random.randint(0,no_op_max)):
+            obs,r,d,_ = env.step(0)
         s = getCurState(obs, sess)
         a = env.action_space.sample()
         lastrAll = rAll
