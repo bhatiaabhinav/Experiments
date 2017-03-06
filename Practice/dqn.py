@@ -33,8 +33,8 @@ action_repeat = 4
 replay_memory_size = 100000
 no_op_max = 30
 batch_size = 32
-reserved_list_max_size = 2
-priority_list_max_size = 16
+alpha = 0.5
+beta = 0.5
 
 adam = True
 double_dqn = True
@@ -49,7 +49,7 @@ run_no = 38
 config_update_frequency = 6
 
 def readConfig():
-    global env_name, learning_rate, momentum, decay, epsilon, error_clipping, y, e_initial, e_decay, e_final, observe, target_update_frequency, update_frequency, action_repeat, replay_memory_size, no_op_max, batch_size, reserved_list_max_size, priority_list_max_size, render, render_output_path, render_repeat, summary_update_frequency, run_no, config_update_frequency
+    global env_name, learning_rate, momentum, decay, epsilon, error_clipping, y, e_initial, e_decay, e_final, observe, target_update_frequency, update_frequency, action_repeat, replay_memory_size, no_op_max, batch_size, beta, alpha, render, render_output_path, render_repeat, summary_update_frequency, run_no, config_update_frequency
     global double_dqn, adam, restore_model, play_mode, pause, learn_only_mode
 
     config = configparser.ConfigParser()
@@ -80,8 +80,8 @@ def readConfig():
     replay_memory_size = config.getint('RL', 'replay_memory_size')
     no_op_max = config.getint('RL', 'no_op_max')
     batch_size = config.getint('RL', 'batch_size')
-    reserved_list_max_size = config.getint('RL', 'reserved_list_max_size')
-    priority_list_max_size = config.getint('RL', 'priority_list_max_size')
+    beta = config.getfloat('RL', 'beta')
+    alpha = config.getfloat('RL', 'alpha')
     double_dqn = config.getboolean('RL', 'double_dqn')
 
     render = config.getboolean('rendering', 'render')
@@ -220,8 +220,13 @@ experience_rewards = np.zeros(replay_memory_size)
 experience_terminals = np.zeros(replay_memory_size, dtype='bool')
 experience_count = 0
 
-priority_experiences = []
-reserved_list = []
+# a min heap of experiences based on selection probability
+priority_list = []
+expid_to_heap_index_map = {}
+equiprobable_buckets = []
+
+priority_list_feed = tf.placeholder(tf.float32, [None])
+tf.summary.histogram('priority_list', priority_list_feed)
 
 successes = 0
 f = 0
@@ -237,7 +242,90 @@ current_error = 0
 rAll_feed = tf.placeholder(tf.int32)
 tf.summary.scalar('reward_per_episode', rAll_feed)
 
-def addToExperience(startState, action, nextState, reward, terminal, reserved):
+def calculateEquiprobableBuckets(alpha, N, k):
+    # assume there are k sets of experiences. Each of size N/k. In ith set, each experience has probability (1/i)^alpha
+    # we need to compute k buckets each with cumulative probability sum_of_probabilities/k
+    buckets = []
+    sum_of_probabilities = 0
+    for set_no in range(k):
+        sum_of_probabilities += N * pow(.1/float(set_no+1),alpha) / k
+    
+    # print(sum_of_probabilities)
+
+    i = 0
+    sum_so_far = 0
+    while (len(buckets) < k-1):
+        while (sum_so_far < (len(buckets) + 1) * sum_of_probabilities/k):
+            set_no = (k * i) / N
+            sum_so_far += pow(.1/float(k-set_no), alpha)
+            i+=1
+        buckets.append(i)
+
+    buckets.append(N)
+
+    #print(buckets)
+    return buckets
+
+def update_expid_to_heap_index_map(heap_index):
+    expid = priority_list[heap_index][1]
+    expid_to_heap_index_map[expid] = heap_index
+
+def compare(err_exp_tuple1, err_exp_tuple2):
+    if err_exp_tuple1[0] < err_exp_tuple2[0]: return -1
+    if err_exp_tuple1[0] > err_exp_tuple2[0]: return 1
+    else:
+        if err_exp_tuple1[1] < err_exp_tuple2[1]: return -1
+        if err_exp_tuple1[1] > err_exp_tuple2[1]: return 1
+        return 0
+
+def sort_min_heap():
+    priority_list.sort()
+    for heap_index in range(len(priority_list)): update_expid_to_heap_index_map(heap_index)
+
+def balance_min_heap(index):
+    if index == 0: return
+
+    parent_index = int((index - 1)/2)
+    if compare(priority_list[index], priority_list[parent_index]) < 0:
+        # need to push index up:
+        priority_list[index], priority_list[parent_index] = priority_list[parent_index], priority_list[index]
+        update_expid_to_heap_index_map(index)
+        update_expid_to_heap_index_map(parent_index)
+        # maybe need to push further up?
+        balance_min_heap(parent_index)
+    else:
+        #check if this guy is larger than any of the children:
+        l_child_index = 2 * index + 1
+        r_child_index = 2 * index + 2
+        if l_child_index < len(priority_list) and compare(priority_list[index], priority_list[l_child_index]) > 0:
+            priority_list[index], priority_list[l_child_index] = priority_list[l_child_index], priority_list[index]
+            update_expid_to_heap_index_map(index)
+            update_expid_to_heap_index_map(l_child_index)
+            balance_min_heap(l_child_index)
+        elif r_child_index < len(priority_list) and compare(priority_list[index], priority_list[r_child_index]) > 0:
+            priority_list[index], priority_list[r_child_index] = priority_list[r_child_index], priority_list[index]
+            update_expid_to_heap_index_map(index)
+            update_expid_to_heap_index_map(r_child_index)
+            balance_min_heap(r_child_index)
+
+def setPrioriry(expid, rank):
+    priority = 1./float(rank)
+    selectionProbability = pow(priority, alpha)
+    record = [selectionProbability, expid]
+    if expid < len(priority_list):
+        heap_index = expid_to_heap_index_map[expid]
+        priority_list[heap_index] = record
+    else:
+        # the case when replay buff is not full yet. in this case, add at the end of heap:
+        priority_list.append(record)
+        heap_index = len(priority_list) - 1
+        update_expid_to_heap_index_map(heap_index)
+    
+    #now balance the heap:
+    balance_min_heap(heap_index)
+
+
+def addToExperience(startState, action, nextState, reward, terminal, rank):
     global experience_count
     experience_startStates[experience_count % replay_memory_size] = startState
     experience_actions[experience_count % replay_memory_size] = action
@@ -245,44 +333,32 @@ def addToExperience(startState, action, nextState, reward, terminal, reserved):
     experience_rewards[experience_count % replay_memory_size] = reward
     experience_terminals[experience_count % replay_memory_size] = terminal
 
-    if (reserved_list_max_size > 0 and reserved):
-        reserved_list.append(experience_count % replay_memory_size)
-        if(len(reserved_list) > reserved_list_max_size):
-            reserved_list.pop(0)
+    # add it to priority list:
+    setPrioriry(experience_count % replay_memory_size, rank)
+
+    # every replay_memory_size interval, sort the priority_list:
+    sort_min_heap()
 
     experience_count += 1
+
+    global equiprobable_buckets
+    if experience_count > 0 and experience_count <= replay_memory_size and experience_count % 1000 == 0:
+        equiprobable_buckets = calculateEquiprobableBuckets(alpha, experience_count, batch_size)
+    
     #return where it was added:
     return (experience_count - 1) % replay_memory_size
 
-def getRandomBatchFromExperience():
-    count = experience_count
-    if count > replay_memory_size:
-        count = replay_memory_size
+def selectExperiencesMinibatch():
     indices = []
-    # add all experiences from reserved list:
-    indices.extend(reserved_list)
-    reserved_list.clear()
-    #1 seat reserved for the latest experience:
-    #indices.append((experience_count - 1) % replay_memory_size)
-    if len(priority_experiences) > 0:
-        for i in range(len(priority_experiences)):
-            indices.append(priority_experiences[i][2])
-        priority_experiences.clear()
-    indices.extend(np.random.choice(count, batch_size - len(indices), replace=False))
-    return indices, experience_startStates[indices], experience_actions[indices], experience_nextStates[indices], experience_rewards[indices], experience_terminals[indices]
 
-pq_counter = 0
-def ifNeededAddToPriorityExperiences(exp_id, exp_error):
-    global pq_counter
-    if (priority_list_max_size == 0):
-        return
-    if (len(priority_experiences) < priority_list_max_size):
-        heapq.heappush(priority_experiences, (abs(exp_error), pq_counter, exp_id))
-        pq_counter += 1
-    else:
-        if abs(exp_error) > priority_experiences[0][-1]:
-            heapq.heappushpop(priority_experiences, (abs(exp_error), pq_counter, exp_id))
-            pq_counter += 1
+    start_index = 0
+    for end_index in equiprobable_buckets:
+        heap_index = random.randint(start_index, end_index - 1)
+        index = priority_list[heap_index][1]
+        indices.append(index)
+        start_index = end_index
+   
+    return indices, experience_startStates[indices], experience_actions[indices], experience_nextStates[indices], experience_rewards[indices], experience_terminals[indices]
 
 def getCurFrame(cur_raw_signal, sess):
     sess.run(copy_cur_to_prev)
@@ -318,7 +394,7 @@ def chooseAction(s, sess):
 
 init = tf.initialize_all_variables()
 merged = tf.summary.merge_all()
-writer = tf.summary.FileWriter('logs/run' + str(run_no) +  '_dualing_double_dqn_ec_' + '_adam-' + str(adam) + '_' + str(env_name) + "_" + str(learning_rate) + '_' + str(decay) + '_' + str(momentum) + '_' + str(epsilon))
+writer = tf.summary.FileWriter('logs/run' + str(run_no) +  'per_dualing_double_dqn_ec_' + '_adam-' + str(adam) + '_' + str(env_name) + "_" + str(learning_rate) + '_' + str(decay) + '_' + str(momentum) + '_' + str(epsilon))
 saver = tf.train.Saver()
 
 config = tf.ConfigProto()
@@ -349,7 +425,7 @@ with tf.Session(config=config) as sess:
         j = 0
         while not d:
             if render:
-                #env.render()
+                # if (f % render_repeat == 0): env.render()
                 if (f % render_repeat == 0): mpimg.imsave(render_output_path, obs)
             
             #choose action:
@@ -362,16 +438,19 @@ with tf.Session(config=config) as sess:
             s1 = getCurState(obs, sess)
 
             #store the experience
-            exp_id = addToExperience(s, a, s1, r, d, True)
+            if abs(r) > 0: rank = 1
+            else: rank = 2
+            exp_id = addToExperience(s, a, s1, r, d, rank)
 
             #do learning here
             if (not play_mode and f > observe and f % update_frequency == 0 and experience_count > batch_size):
                 #get random experiences:
-                exp_ids, startStates, actions, nextStates, rewards, terminals = getRandomBatchFromExperience()
+                exp_ids, startStates, actions, nextStates, rewards, terminals = selectExperiencesMinibatch()
                 targets = sess.run(Q, feed_dict={input_state_feed:startStates})
                 if double_dqn:
                     next_best_actions = sess.run(best_action, feed_dict={input_state_feed:nextStates})
                 Q1 = sess.run(tQ, feed_dict={tinput_state_feed:nextStates})
+                exp_err_tuples = [0 for i in range(batch_size)]
                 for x in range(batch_size):
                     if terminals[x]:
                         err = rewards[x] - targets[x, actions[x]]
@@ -380,14 +459,15 @@ with tf.Session(config=config) as sess:
                             err = rewards[x] + y * Q1[x, next_best_actions[x]] - targets[x, actions[x]]
                         else:
                             err = rewards[x] + y * np.max(Q1[x])- targets[x, actions[x]]
-                    ifNeededAddToPriorityExperiences((exp_ids[x] - 1) % replay_memory_size, err)
+                    exp_err_tuples[x] = [abs(err), exp_ids[x]]
                     current_error += 0.5 * (err - current_error)
                     # to stabilize training:
                     if error_clipping:
                         if err > 1: err = 1
                         if err < -1: err = -1
                     targets[x, actions[x]] += err
-
+                exp_err_tuples.sort()
+                for x in range(batch_size): setPrioriry(exp_err_tuples[x][1], batch_size - x)
                 _,current_loss = sess.run([updateModel,loss],feed_dict={input_state_feed:startStates,nextQ:targets})
 
             if (not play_mode and f % target_update_frequency == 0):
@@ -400,7 +480,8 @@ with tf.Session(config=config) as sess:
                                                     epsilon_feed:e,
                                                     err_feed:current_error,
                                                     av_action_value_feed:current_av_action_value,
-                                                    rAll_feed: lastrAll}),
+                                                    rAll_feed: lastrAll,
+                                                    priority_list_feed: np.array(priority_list)[:,0]}),
                                                     f)
             
             if f % 100000 == 0:
