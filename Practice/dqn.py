@@ -337,12 +337,13 @@ def addToExperience(startState, action, nextState, reward, terminal, rank):
     setPrioriry(experience_count % replay_memory_size, rank)
 
     # every replay_memory_size interval, sort the priority_list:
-    sort_min_heap()
+    if experience_count % replay_memory_size == 0:
+        sort_min_heap()
 
     experience_count += 1
 
     global equiprobable_buckets
-    if experience_count > 0 and experience_count <= replay_memory_size and experience_count % 1000 == 0:
+    if experience_count > 0 and experience_count <= replay_memory_size and experience_count % 2000 == 0:
         equiprobable_buckets = calculateEquiprobableBuckets(alpha, experience_count, batch_size)
     
     #return where it was added:
