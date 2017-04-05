@@ -304,16 +304,19 @@ def balance_min_heap(index):
         #check if this guy is larger than any of the children:
         l_child_index = 2 * index + 1
         r_child_index = 2 * index + 2
-        if l_child_index < len(priority_list) and compare(priority_list[index], priority_list[l_child_index]) > 0:
-            priority_list[index], priority_list[l_child_index] = priority_list[l_child_index], priority_list[index]
+        l_child_exists = l_child_index < len(priority_list)
+        r_child_exists = r_child_index < len(priority_list)
+        if (l_child_exists and compare(priority_list[index], priority_list[l_child_index]) > 0) or (r_child_exists and compare(priority_list[index], priority_list[r_child_index]) > 0):
+            child_to_swap_with = l_child_index
+            if not l_child_exists:
+                child_to_swap_with = r_child_index
+            elif l_child_exists and r_child_exists and compare(priority_list[l_child_index], priority_list[r_child_index]) >= 0:
+                    child_to_swap_with = r_child_index
+            
+            priority_list[index], priority_list[child_to_swap_with] = priority_list[child_to_swap_with], priority_list[index]
             update_expid_to_heap_index_map(index)
-            update_expid_to_heap_index_map(l_child_index)
-            balance_min_heap(l_child_index)
-        elif r_child_index < len(priority_list) and compare(priority_list[index], priority_list[r_child_index]) > 0:
-            priority_list[index], priority_list[r_child_index] = priority_list[r_child_index], priority_list[index]
-            update_expid_to_heap_index_map(index)
-            update_expid_to_heap_index_map(r_child_index)
-            balance_min_heap(r_child_index)
+            update_expid_to_heap_index_map(child_to_swap_with)
+            balance_min_heap(child_to_swap_with)
 
 def setPrioriry(expid, rank):
     priority = 1./float(rank)
