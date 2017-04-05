@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import queue
 import configparser
 import heapq
+import scipy.misc
 #%matplotlib inline
 
 env_name = 'Breakout-v0'
@@ -98,21 +99,21 @@ readConfig()
 
 env = gym.make(env_name)
 
-raw_signal_feed = tf.placeholder(tf.uint8, [210, 160, 3]) 
-raw_signal = tf.Variable(tf.zeros([210, 160, 3], dtype=tf.uint8))
-prev_signal = tf.Variable(tf.zeros([210,160,3], dtype=tf.uint8))
-read_cur_feed = raw_signal.assign(raw_signal_feed)
-copy_cur_to_prev = prev_signal.assign(raw_signal)
-raw_frame = tf.cast(raw_signal, tf.float32)
-prev_frame = tf.cast(prev_signal, tf.float32)
-max_frame = tf.maximum(raw_frame, prev_frame)
-resized_frame = tf.image.resize_images(max_frame, [84, 84])
-final_frame = tf.reduce_mean(resized_frame, axis=2)
-final_frame = tf.cast(final_frame, tf.uint8)
-tf.summary.image('final_frame', tf.reshape(final_frame, [1, 84, 84, 1]))
+#raw_signal_feed = tf.placeholder(tf.uint8, [210, 160, 3]) 
+#raw_signal = tf.Variable(tf.zeros([210, 160, 3], dtype=tf.uint8))
+#prev_signal = tf.Variable(tf.zeros([210,160,3], dtype=tf.uint8))
+#read_cur_feed = raw_signal.assign(raw_signal_feed)
+#copy_cur_to_prev = prev_signal.assign(raw_signal)
+#raw_frame = tf.cast(raw_signal, tf.float32)
+#prev_frame = tf.cast(prev_signal, tf.float32)
+#max_frame = tf.maximum(raw_frame, prev_frame)
+#resized_frame = tf.image.resize_images(max_frame, [84, 84])
+#final_frame = tf.reduce_mean(resized_frame, axis=2)
+#final_frame = tf.cast(final_frame, tf.uint8)
 
 state = tf.placeholder(tf.uint8, [1,84,84,4])
 tf.summary.image('state', state)
+tf.summary.image('final_frame', tf.transpose(state, perm=[3,1,2,0]), max_outputs=1)
 
 
 n_outputs = env.action_space.n
@@ -149,17 +150,23 @@ def createBrain(name_scope):
 
         input_state_feed = tf.placeholder(tf.uint8, [None, 84, 84, 4], name=name_scope+'input_state_feed')
         input_state_feed_float = tf.cast(input_state_feed, tf.float32)
+        #input_state_feed_normalized = input_state_feed_float  - tf.fill([84,84,4], 127.0)
 
 		# hidden layers
         h_conv1 = tf.nn.relu(conv2d(input_state_feed_float,W_conv1,4) + b_conv1)
+        #h_conv1_d = tf.nn.dropout(h_conv1, tf.constant(0.66))
         #h_pool1 = self.max_pool_2x2(h_conv1)
         h_conv2 = tf.nn.relu(conv2d(h_conv1,W_conv2,2) + b_conv2)
+        #h_conv2_d = tf.nn.dropout(h_conv2, tf.constant(0.66))
         h_conv3 = tf.nn.relu(conv2d(h_conv2,W_conv3,1) + b_conv3)
+        #h_conv3_d = tf.nn.dropout(h_conv3, tf.constant(0.66))
         h_conv3_shape = h_conv3.get_shape().as_list()
         #print "dimension:",h_conv3_shape[1]*h_conv3_shape[2]*h_conv3_shape[3]
         h_conv3_flat = tf.reshape(h_conv3,[-1,3136])
         h_fc1_v = tf.nn.relu(tf.matmul(h_conv3_flat,W_fc1_v) + b_fc1_v)
+        #h_fc1_v_d = tf.nn.dropout(h_fc1_v, tf.constant(0.66))
         h_fc1_a = tf.nn.relu(tf.matmul(h_conv3_flat,W_fc1_a) + b_fc1_a)
+        #h_fc1_a_d = tf.nn.dropout(h_fc1_a, tf.constant(0.66))
 
         # Value layer
         V = tf.matmul(h_fc1_v, W_fc2_v) + b_fc2_v
@@ -361,10 +368,29 @@ def selectExperiencesMinibatch():
    
     return indices, experience_startStates[indices], experience_actions[indices], experience_nextStates[indices], experience_rewards[indices], experience_terminals[indices]
 
+#prev_raw_signal = np.zeros((210, 160, 3), "uint8")
+
 def getCurFrame(cur_raw_signal, sess):
-    sess.run(copy_cur_to_prev)
-    sess.run(read_cur_feed, feed_dict = {raw_signal_feed: cur_raw_signal})
-    return sess.run(final_frame)
+    #sess.run(copy_cur_to_prev)
+    #sess.run(read_cur_feed, feed_dict = {raw_signal_feed: cur_raw_signal})
+    #raw_signal_feed = tf.placeholder(tf.uint8, [210, 160, 3]) 
+    #raw_signal = tf.Variable(tf.zeros([210, 160, 3], dtype=tf.uint8))
+    #prev_signal = tf.Variable(tf.zeros([210,160,3], dtype=tf.uint8))
+    #read_cur_feed = raw_signal.assign(raw_signal_feed)
+    #copy_cur_to_prev = prev_signal.assign(raw_signal)
+    #raw_frame = tf.cast(raw_signal, tf.float32)
+    #prev_frame = tf.cast(prev_signal, tf.float32)
+    #max_frame = tf.maximum(raw_frame, prev_frame)
+    #resized_frame = tf.image.resize_images(max_frame, [84, 84])
+    #final_frame = tf.reduce_mean(resized_frame, axis=2)
+    #final_frame = tf.cast(final_frame, tf.uint8)
+    #global prev_raw_signal
+    frame = np.mean(cur_raw_signal, 2).astype("uint8")
+    frame = scipy.misc.imresize(frame, [84, 84])
+    frame = frame.reshape([84,84])
+    #prev_raw_signal = cur_raw_signal
+    #return sess.run(final_frame)
+    return frame
 
 def getCurState(cur_raw_signal, sess):
     curFrame = getCurFrame(cur_raw_signal, sess)
@@ -407,7 +433,7 @@ with tf.Session(config=config) as sess:
     sess.run(copyToTargetBrain)
     if restore_model:
         try:
-            saver.restore(sess, "logs/model.ckpt")
+            saver.restore(sess, "ckpts/model_" + env_name + ".ckpt")
         except Exception:
             print('Could not restore model')
     ep_no = 0
@@ -485,8 +511,8 @@ with tf.Session(config=config) as sess:
                                                     priority_list_feed: np.array(priority_list)[:,0]}),
                                                     f)
             
-            if f % 100000 == 0:
-                saver.save(sess, "logs/model.ckpt")
+            if f % 50 * config_update_frequency == 0:
+                saver.save(sess, "ckpts/model_" + env_name + ".ckpt")
 
             if f % config_update_frequency == 0:
                 readConfig()

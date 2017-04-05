@@ -1,1 +1,3 @@
 run 63 - state of the art for breakout. it is Dualing Double DQN complete with no_ops starts. No bugs.
+
+run 75 onwards: input frame preprocessing done on cpu instead of gpu. And every frame is no longer max of cur & prev signal. It's just the current signal
