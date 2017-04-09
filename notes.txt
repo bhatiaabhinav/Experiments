@@ -1,3 +1,45 @@
 run 63 - state of the art for breakout. it is Dualing Double DQN complete with no_ops starts. No bugs.
+run 83 - also state of the art: it is run 63 + corect implementation of prioritized experience replay 
+                                            + a litle faster due to moving input preprocessing to cpu
+run 88 - state of the art in terms of final convergance value
 
 run 75 onwards: input frame preprocessing done on cpu instead of gpu. And every frame is no longer max of cur & prev signal. It's just the current signal
+
+run 82 onwards: corect implementation of prioritized experience replay
+
+run 87 onwards: smart setting of priority of incoming states
+
+run 84: tried run 83 + dropouts. and 10 times learning rate. It did better than run 83.
+run 85: now going to try with setting priority of all new incoming states randomly. didnt work
+run 86: setting incoming states p1. didnt work
+run 87: smart setting incoming states priority with dropouts
+run 88: smart setting incoming states priority without dropouts. i.e run83 + smart setting. Best with per so far.
+
+to try
+------
+-> reasonably distribute incoming states priority
+-> propagate shocks backwards
+
+new ideas
+---------
+
+dropouts
+--------
+tried in runs 76, 77, 78
+78 seems to be the best. applied dropouts with 10 times the learning rate (i.e 0.00065)
+but it couldnt become very good - never exceeded 4 points per episode.
+but then my implementation of per was wrong at that time. i should probably try again.
+
+
+skip connections
+
+left brain and right brain - left brain always keeping a consistant model, never accepting any inconsistant points. Right brain challenges status quo.
+
+input scaling?
+
+
+for prioritized exp replay,
+    -> what should be the initial priority of an experience?
+    Lets observe TD error of 32 transitions and only then add them to exp replay acc to priority.
+
+    -> After observing TD errors, increase priority of prev states as well

@@ -8,6 +8,7 @@ import queue
 import configparser
 import heapq
 import scipy.misc
+import time
 #%matplotlib inline
 
 env_name = 'Breakout-v0'
@@ -22,6 +23,7 @@ decay = 0.95
 epsilon = 0.01
 error_clipping = True
 restore_model = True
+dropouts = True
 
 y = 0.99
 e_initial = 1
@@ -51,7 +53,7 @@ config_update_frequency = 6
 
 def readConfig():
     global env_name, learning_rate, momentum, decay, epsilon, error_clipping, y, e_initial, e_decay, e_final, observe, target_update_frequency, update_frequency, action_repeat, replay_memory_size, no_op_max, batch_size, beta, alpha, render, render_output_path, render_repeat, summary_update_frequency, run_no, config_update_frequency
-    global double_dqn, adam, restore_model, play_mode, pause, learn_only_mode
+    global double_dqn, adam, restore_model, dropouts, play_mode, pause, learn_only_mode
 
     config = configparser.ConfigParser()
     config.read('config.ini')
@@ -69,6 +71,7 @@ def readConfig():
     error_clipping = config.getboolean('optimizer', 'error_clipping')
     adam = config.getboolean('optimizer', 'adam')
     restore_model = config.getboolean('optimizer', 'restore_model')
+    dropouts = config.getboolean('optimizer', 'dropouts')
 
     y = config.getfloat('RL', 'y')
     e_initial = config.getfloat('RL', 'e_initial')
@@ -93,6 +96,9 @@ def readConfig():
     run_no = config.getint('summary', 'run_no')
 
     config_update_frequency = config.getint('config', 'config_update_frequency')
+
+    if dropouts:
+        learning_rate = 10 * learning_rate
 
 readConfig()
 
@@ -132,47 +138,76 @@ def conv2d(x, W, stride):
 
 def createBrain(name_scope):
     with tf.name_scope(name_scope):
-        W_conv1 = weight_variable([8,8,4,32])
-        b_conv1 = bias_variable([32])
-        W_conv2 = weight_variable([4,4,32,64])
-        b_conv2 = bias_variable([64])
-        W_conv3 = weight_variable([3,3,64,64])
-        b_conv3 = bias_variable([64])
-        W_fc1_v = weight_variable([3136,512])
-        b_fc1_v = bias_variable([512])
-        W_fc1_a = weight_variable([3136,512])
-        b_fc1_a = bias_variable([512])
-        #the final layer for value and advantage respectively:
-        W_fc2_v = weight_variable([512,1])
-        b_fc2_v = bias_variable([1])
-        W_fc2_a = weight_variable([512,n_outputs])
-        b_fc2_a = bias_variable([n_outputs])
+        if dropouts:
+            W_conv1 = weight_variable([8,8,4,48])
+            b_conv1 = bias_variable([48])
+            W_conv2 = weight_variable([4,4,48,96])
+            b_conv2 = bias_variable([96])
+            W_conv3 = weight_variable([3,3,96,96])
+            b_conv3 = bias_variable([96])
+            W_fc1_v = weight_variable([4704,570])
+            b_fc1_v = bias_variable([570])
+            W_fc1_a = weight_variable([4704,570])
+            b_fc1_a = bias_variable([570])
+            #the final layer for value and advantage respectively:
+            W_fc2_v = weight_variable([570,1])
+            b_fc2_v = bias_variable([1])
+            W_fc2_a = weight_variable([570,n_outputs])
+            b_fc2_a = bias_variable([n_outputs])
+        else:
+            W_conv1 = weight_variable([8,8,4,32])
+            b_conv1 = bias_variable([32])
+            W_conv2 = weight_variable([4,4,32,64])
+            b_conv2 = bias_variable([64])
+            W_conv3 = weight_variable([3,3,64,64])
+            b_conv3 = bias_variable([64])
+            W_fc1_v = weight_variable([3136,512])
+            b_fc1_v = bias_variable([512])
+            W_fc1_a = weight_variable([3136,512])
+            b_fc1_a = bias_variable([512])
+            #the final layer for value and advantage respectively:
+            W_fc2_v = weight_variable([512,1])
+            b_fc2_v = bias_variable([1])
+            W_fc2_a = weight_variable([512,n_outputs])
+            b_fc2_a = bias_variable([n_outputs])
 
         input_state_feed = tf.placeholder(tf.uint8, [None, 84, 84, 4], name=name_scope+'input_state_feed')
         input_state_feed_float = tf.cast(input_state_feed, tf.float32)
         #input_state_feed_normalized = input_state_feed_float  - tf.fill([84,84,4], 127.0)
 
-		# hidden layers
-        h_conv1 = tf.nn.relu(conv2d(input_state_feed_float,W_conv1,4) + b_conv1)
-        #h_conv1_d = tf.nn.dropout(h_conv1, tf.constant(0.66))
-        #h_pool1 = self.max_pool_2x2(h_conv1)
-        h_conv2 = tf.nn.relu(conv2d(h_conv1,W_conv2,2) + b_conv2)
-        #h_conv2_d = tf.nn.dropout(h_conv2, tf.constant(0.66))
-        h_conv3 = tf.nn.relu(conv2d(h_conv2,W_conv3,1) + b_conv3)
-        #h_conv3_d = tf.nn.dropout(h_conv3, tf.constant(0.66))
-        h_conv3_shape = h_conv3.get_shape().as_list()
-        #print "dimension:",h_conv3_shape[1]*h_conv3_shape[2]*h_conv3_shape[3]
-        h_conv3_flat = tf.reshape(h_conv3,[-1,3136])
-        h_fc1_v = tf.nn.relu(tf.matmul(h_conv3_flat,W_fc1_v) + b_fc1_v)
-        #h_fc1_v_d = tf.nn.dropout(h_fc1_v, tf.constant(0.66))
-        h_fc1_a = tf.nn.relu(tf.matmul(h_conv3_flat,W_fc1_a) + b_fc1_a)
-        #h_fc1_a_d = tf.nn.dropout(h_fc1_a, tf.constant(0.66))
+        if dropouts:
+            # hidden layers
+            h_conv1 = tf.nn.relu(conv2d(input_state_feed_float,W_conv1,4) + b_conv1)
+            h_conv1_d = tf.nn.dropout(h_conv1, tf.constant(0.66))
+            h_conv2 = tf.nn.relu(conv2d(h_conv1_d,W_conv2,2) + b_conv2)
+            h_conv2_d = tf.nn.dropout(h_conv2, tf.constant(0.66))
+            h_conv3 = tf.nn.relu(conv2d(h_conv2_d,W_conv3,1) + b_conv3)
+            h_conv3_d = tf.nn.dropout(h_conv3, tf.constant(0.66))
+            h_conv3_flat = tf.reshape(h_conv3_d,[-1,4704])
+            h_fc1_v = tf.nn.relu(tf.matmul(h_conv3_flat,W_fc1_v) + b_fc1_v)
+            h_fc1_v_d = tf.nn.dropout(h_fc1_v, tf.constant(0.9))
+            h_fc1_a = tf.nn.relu(tf.matmul(h_conv3_flat,W_fc1_a) + b_fc1_a)
+            h_fc1_a_d = tf.nn.dropout(h_fc1_a, tf.constant(0.9))
 
-        # Value layer
-        V = tf.matmul(h_fc1_v, W_fc2_v) + b_fc2_v
+            # Value layer
+            V = tf.matmul(h_fc1_v_d, W_fc2_v) + b_fc2_v
 
-        # Value layer
-        A = tf.matmul(h_fc1_a, W_fc2_a) + b_fc2_a
+            # Value layer
+            A = tf.matmul(h_fc1_a_d, W_fc2_a) + b_fc2_a
+        else:
+            # hidden layers
+            h_conv1 = tf.nn.relu(conv2d(input_state_feed_float,W_conv1,4) + b_conv1)
+            h_conv2 = tf.nn.relu(conv2d(h_conv1,W_conv2,2) + b_conv2)
+            h_conv3 = tf.nn.relu(conv2d(h_conv2,W_conv3,1) + b_conv3)
+            h_conv3_flat = tf.reshape(h_conv3,[-1,3136])
+            h_fc1_v = tf.nn.relu(tf.matmul(h_conv3_flat,W_fc1_v) + b_fc1_v)
+            h_fc1_a = tf.nn.relu(tf.matmul(h_conv3_flat,W_fc1_a) + b_fc1_a)
+
+            # Value layer
+            V = tf.matmul(h_fc1_v, W_fc2_v) + b_fc2_v
+
+            # Value layer
+            A = tf.matmul(h_fc1_a, W_fc2_a) + b_fc2_a
 
 		# Q Value layer
         Q = V + A - tf.reshape(tf.reduce_mean(A, axis=1), [-1,1])
@@ -231,6 +266,8 @@ experience_count = 0
 priority_list = []
 expid_to_heap_index_map = {}
 equiprobable_buckets = []
+
+last_mini_batch_experiences = []
 
 priority_list_feed = tf.placeholder(tf.float32, [None])
 tf.summary.histogram('priority_list', priority_list_feed)
@@ -424,7 +461,7 @@ def chooseAction(s, sess):
 
 init = tf.initialize_all_variables()
 merged = tf.summary.merge_all()
-writer = tf.summary.FileWriter('logs/run' + str(run_no) +  'per_dualing_double_dqn_ec_' + '_adam-' + str(adam) + '_' + str(env_name) + "_" + str(learning_rate) + '_' + str(decay) + '_' + str(momentum) + '_' + str(epsilon))
+writer = tf.summary.FileWriter('logs/run' + str(run_no) +  'per_dualing_double_dqn_ec_' + ('dropouts'if dropouts else '') + '_adam-' + str(adam) + '_' + str(env_name) + "_" + str(learning_rate) + '_' + str(decay) + '_' + str(momentum) + '_' + str(epsilon))
 saver = tf.train.Saver()
 
 config = tf.ConfigProto()
@@ -456,10 +493,12 @@ with tf.Session(config=config) as sess:
         while not d:
             if render:
                 # if (f % render_repeat == 0): env.render()
-                if (f % render_repeat == 0): mpimg.imsave(render_output_path, obs)
+                if play_mode or (f % render_repeat == 0): mpimg.imsave(render_output_path, obs)
+                if play_mode:
+                    time.sleep(1.0/60)
             
             #choose action:
-            if j % action_repeat == (action_repeat - 1):
+            if play_mode or j % action_repeat == (action_repeat - 1):
                 a = chooseAction(s, sess)
             #print(a)
             
@@ -467,11 +506,30 @@ with tf.Session(config=config) as sess:
             obs,r,d,_ = env.step(a)
             s1 = getCurState(obs, sess)
 
-            #store the experience
-            if abs(r) > 0: rank = 1
-            else: rank = 2
-            exp_id = addToExperience(s, a, s1, r, d, rank)
-
+            last_mini_batch_experiences.append((s, a, s1, r, d))
+           
+            if len(last_mini_batch_experiences) == batch_size:
+                exp_ids = [i for i in range(batch_size)]
+                startStates = np.array([last_mini_batch_experiences[i][0] for i in range(batch_size)]).reshape(batch_size, 84, 84, 4)
+                actions = [last_mini_batch_experiences[i][1] for i in range(batch_size)]
+                nextStates = np.array([last_mini_batch_experiences[i][2] for i in range(batch_size)]).reshape(batch_size, 84, 84, 4)
+                rewards = [last_mini_batch_experiences[i][3] for i in range(batch_size)]
+                terminals = [last_mini_batch_experiences[i][4] for i in range(batch_size)]
+                error_expid_tuples = []
+                targets = sess.run(Q, feed_dict={input_state_feed:startStates})
+                Q1 = sess.run(tQ, feed_dict={tinput_state_feed:nextStates})
+                for x in range(batch_size):
+                    if terminals[x]:
+                        err = rewards[x] - targets[x, actions[x]]
+                    else:
+                        err = rewards[x] + y * np.max(Q1[x])- targets[x, actions[x]]
+                    error_expid_tuples.append((abs(err), x))
+                error_expid_tuples.sort()
+                for x in range(batch_size):
+                    x_plus1_rank_experience = last_mini_batch_experiences[error_expid_tuples[batch_size-x-1][1]]
+                    addToExperience(x_plus1_rank_experience[0], x_plus1_rank_experience[1], x_plus1_rank_experience[2], x_plus1_rank_experience[3],x_plus1_rank_experience[4], x+1)
+                last_mini_batch_experiences.clear()
+            
             #do learning here
             if (not play_mode and f > observe and f % update_frequency == 0 and experience_count > batch_size):
                 #get random experiences:
@@ -503,7 +561,7 @@ with tf.Session(config=config) as sess:
             if (not play_mode and f % target_update_frequency == 0):
                 sess.run(copyToTargetBrain)
 
-            if f % summary_update_frequency == 0:
+            if (not f == 0) and (f % summary_update_frequency == 0):
                 writer.add_summary(sess.run(merged, feed_dict={state:s, 
                                                     totalReward_feed:totalReward,
                                                     loss_feed:current_loss,
@@ -514,7 +572,7 @@ with tf.Session(config=config) as sess:
                                                     priority_list_feed: np.array(priority_list)[:,0]}),
                                                     f)
             
-            if f % 50 * config_update_frequency == 0:
+            if not play_mode and f % (50 * config_update_frequency) == 0:
                 saver.save(sess, "ckpts/model_" + env_name + ".ckpt")
 
             if f % config_update_frequency == 0:
