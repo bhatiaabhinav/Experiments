@@ -137,7 +137,7 @@ stream_anomalies_ll = []
 # the average of stream data over last model_input_length points
 av_x = 0
 max_x = 2000
-model_version = "log-so-opm-v3"
+model_version = "log-so-opm_put"
 #model_version = "sin"
 model_name = "model-{0}".format(model_version)
 skipTraining = True
@@ -172,9 +172,11 @@ def transformInput(x, max_x, moving_av_x):
 anomaly_moving_av = 0
 anomaly_moving_variance = 0
 anomaly_smoothing = 0.95
+anomaly_n = 6
+last_few_anomalies = [0 for i in range(anomaly_n)]
 
 def anomalyExists():
-    error_window_length = 60 * 2
+    error_window_length = 60 * 4
     if (len(stream_error) < error_window_length + 1):
         return False
     recent_errors = np.array(stream_error[-error_window_length - 1:-1])
@@ -185,7 +187,11 @@ def anomalyExists():
     anomaly_moving_variance = sd * sd
     current_point = stream_error[-1]
     # current_variance = (current_point - anomaly_moving_av) * (current_point - anomaly_moving_av)
-    ans = abs(current_point - anomaly_moving_av) > anomaly_precision * math.sqrt(anomaly_moving_variance)
+    ans_dev = abs(current_point - mean) / sd
+    ans = ans_dev > anomaly_precision and ans_dev >= np.median(last_few_anomalies)
+    if (ans):
+        last_few_anomalies.pop(0)
+        last_few_anomalies.append(ans_dev)
     # anomaly_moving_av = (1 - anomaly_smoothing) * current_point + anomaly_smoothing * anomaly_moving_av
     # anomaly_moving_variance = (1 - anomaly_smoothing) * current_variance + anomaly_smoothing * anomaly_moving_variance
     return ans
@@ -272,7 +278,7 @@ print("Initializing data ... ")
 if dummyData:
     dataLoader.initializeDummyData()
 else:
-    raw_data = dataLoader.initializeFromFile('archive_opm.csv')
+    raw_data = dataLoader.initializeFromFile('archive_opm_put.csv')
 print("Done")
 print("")
 
@@ -280,7 +286,7 @@ i = 0
 x = dataLoader.getNextPoint()
 while x is not None:
     observePointAndPredict(x)
-    print('{0}'.format(i))
+    if i % 100 == 0: print('{0}'.format(i))
     i += 1
     x = dataLoader.getNextPoint()
 

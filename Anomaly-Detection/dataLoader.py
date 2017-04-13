@@ -7,9 +7,9 @@ def load_dummy_data():
     return np.array([250 + 250 * math.sin(float(i)/100) for i in range(10000)]).reshape(10000,1)
     #return np.array([(i%300) * math.sin(float(i)/100) for i in range(10000)]).reshape(10000,1)
 
-def load_data_opm():
+def load_data_opm(filepath):
     data = []
-    with open('archive_opm.csv') as csvfile:
+    with open(filepath) as csvfile:
         opmCounts = csv.reader(csvfile, quotechar='"')
         for row in opmCounts:
             for i in range(len(row)):
@@ -31,7 +31,7 @@ def initializeFromFile(filepath):
         print('File not found. Loading dummy data.')
         data = load_dummy_data()
     else:
-        data = load_data_opm()[-10000:]
+        data = load_data_opm(filepath)[-20000:]
     index = 0
 
 def getNextPoint():
