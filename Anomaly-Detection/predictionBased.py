@@ -126,6 +126,7 @@ def extended_predict(model, x, prediction_length):
 
 model_input_length = 1440
 stream_prediction_latency = 60
+anomaly_detection_latency = 3
 stream_data = []
 raw_stream_data = []
 stream_predicted = [np.zeros([1])]
@@ -137,7 +138,7 @@ stream_anomalies_ll = []
 # the average of stream data over last model_input_length points
 av_x = 0
 max_x = 2000
-model_version = "log-so-opm_put"
+model_version = "log-so-opm"
 #model_version = "sin"
 model_name = "model-{0}".format(model_version)
 skipTraining = True
@@ -165,7 +166,7 @@ def transformInput(x, max_x, moving_av_x):
     # f = int(256 * f_scaled) # int between 0 and 256 (256 excluded)
     # f = int((256 * math.log1p(1+x_clipped)) / (math.log1p(max_x) + 1))
     # print("x: {0}\tfx: {1}".format(x, fx))
-    smoothing = 0.6
+    smoothing = 0.7
     fx = (1 - smoothing) * fx + smoothing * moving_av_x
     return fx
 
@@ -176,22 +177,33 @@ anomaly_n = 6
 last_few_anomalies = [0 for i in range(anomaly_n)]
 
 def anomalyExists():
-    error_window_length = 60 * 4
-    if (len(stream_error) < error_window_length + 1):
+    error_window_length = 60 * 8
+    if (len(stream_error) < error_window_length + anomaly_detection_latency):
         return False
-    recent_errors = np.array(stream_error[-error_window_length - 1:-1])
-    mean = np.mean(recent_errors)
-    sd = math.sqrt(np.var(recent_errors))
+    recent_errors = stream_error[len(stream_error) - error_window_length - anomaly_detection_latency : len(stream_error) - anomaly_detection_latency]
+    recent_anomalies = stream_anomalies[len(stream_anomalies) - error_window_length - anomaly_detection_latency + 1: len(stream_anomalies) - anomaly_detection_latency + 1]
+    recent_errors_excluding_anomalies = []
+    for i in range(len(recent_errors)):
+        if recent_anomalies[i] == 0:
+            recent_errors_excluding_anomalies.append(recent_errors[i])
+    if len(recent_errors_excluding_anomalies) > 0.5 * len (recent_errors):
+        background_errors = recent_errors_excluding_anomalies
+    else:
+        background_errors = recent_errors
+    mean = np.mean(background_errors)
+    sd = math.sqrt(np.var(background_errors))
     global anomaly_moving_av, anomaly_moving_variance
     anomaly_moving_av = mean
     anomaly_moving_variance = sd * sd
-    current_point = stream_error[-1]
+    current_points = np.array(stream_error[-anomaly_detection_latency:])
     # current_variance = (current_point - anomaly_moving_av) * (current_point - anomaly_moving_av)
-    ans_dev = abs(current_point - mean) / sd
-    ans = ans_dev > anomaly_precision and ans_dev >= np.median(last_few_anomalies)
+    ans_devs = np.abs(current_points - mean*np.ones(anomaly_detection_latency))
+    mean_ans_devs = np.mean(ans_devs)
+    ans = mean_ans_devs > anomaly_precision * sd # and mean_ans_devs >= np.median(last_few_anomalies)
     if (ans):
+        stream_anomalies[-anomaly_detection_latency:] = np.ones(anomaly_detection_latency)
         last_few_anomalies.pop(0)
-        last_few_anomalies.append(ans_dev)
+        last_few_anomalies.append(mean_ans_devs)
     # anomaly_moving_av = (1 - anomaly_smoothing) * current_point + anomaly_smoothing * anomaly_moving_av
     # anomaly_moving_variance = (1 - anomaly_smoothing) * current_variance + anomaly_smoothing * anomaly_moving_variance
     return ans
@@ -278,7 +290,7 @@ print("Initializing data ... ")
 if dummyData:
     dataLoader.initializeDummyData()
 else:
-    raw_data = dataLoader.initializeFromFile('archive_opm_put.csv')
+    raw_data = dataLoader.initializeFromFile('archive_opm.csv')
 print("Done")
 print("")
 
