@@ -3,41 +3,58 @@ import csv
 import os.path
 import math
 
-def load_dummy_data():
-    return np.array([250 + 250 * math.sin(float(i)/100) for i in range(10000)]).reshape(10000,1)
-    #return np.array([(i%300) * math.sin(float(i)/100) for i in range(10000)]).reshape(10000,1)
+class DataLoader:
+    # abstract class DataLoader
 
-def load_data_opm(filepath):
-    data = []
-    with open(filepath) as csvfile:
-        opmCounts = csv.reader(csvfile, quotechar='"')
-        for row in opmCounts:
-            for i in range(len(row)):
-                row[i] = row[i].strip()
-            data.append(float(row[0]))
-    return np.array(data).reshape(len(data),1)
+    def __init__(self):
+        pass
 
-
-data = []
-index = 0
-
-def initializeDummyData():
-    global data, index
-    data = load_dummy_data()[-5000:]
-
-def initializeFromFile(filepath):
-    global data, index
-    if not os.path.isfile(filepath):
-        print('File not found. Loading dummy data.')
-        data = load_dummy_data()
-    else:
-        data = load_data_opm(filepath)[-20000:]
-    index = 0
-
-def getNextPoint():
-    global index
-    if index >= len(data):
+    def getNextPoint(self):
         return None
-    p = data[index]
-    index += 1
-    return p
+
+
+class DummyDataLoader(DataLoader):
+    __index = 0
+
+    def __init__(self):
+        super(DataLoader, self).__init__()
+
+    def getNextPoint(self):
+        y = np.array(250 + 250 * math.sin(float(__index)/100))
+        __index += 1
+        return y
+
+
+class FileDataLoader(DataLoader):
+
+    def __init__(self, filename):
+        super(DataLoader, self).__init__()
+        if os.path.isfile(filename):
+            self.__filename = filename
+        else:
+            print('File not found. Loading dummy data.')
+        self.load_data()
+
+    def load_data(self):
+        data = []
+        print('Loading from {0}'.format(self.__filename))
+        with open(self.__filename) as csvfile:
+            counts = csv.reader(csvfile, quotechar='"')
+            for row in counts:
+                for i in range(len(row)):
+                    row[i] = row[i].strip()
+                data.append(float(row[0]))
+        self.__data = np.array(data).reshape(len(data), 1)
+        self.__index = 0
+
+    def getNextPoint(self):
+        if self.__index >= len(self.__data):
+            return None
+        y = self.__data[self.__index]
+        self.__index += 1
+        return y
+
+
+class KafkaDataLoader(DataLoader):
+    # Ishabh to implment this
+    pass
