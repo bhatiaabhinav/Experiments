@@ -5,22 +5,12 @@ import math
 import csv
 import os.path
 import keras.models
-import dataLoader
+from dataLoader import FileDataLoader, DummyDataLoader
 from matplotlib import pyplot as plt
 
 
 dummyData = False
 
-def smooth(data, window_length):
-    smoothed_data = []
-    for i in range(len(data)):
-        if i >= window_length/2 and i <= len(data) - window_length/2 - 1:
-            sum = np.zeros((1,1))
-            for j in range(window_length):
-                sum += data[i - int(window_length/2) + j]
-            sum = float(sum)/window_length
-            smoothed_data.append(sum)
-    return np.array(smoothed_data).reshape(len(smoothed_data), 1)
 
 def one_hot(y, length):
     y_onehot = np.zeros([length], dtype='uint8')
@@ -288,9 +278,10 @@ def plot_all():
 
 print("Initializing data ... ")
 if dummyData:
-    dataLoader.initializeDummyData()
+    dataLoader = DummyDataLoader()
 else:
-    raw_data = dataLoader.initializeFromFile('archive_opm.csv')
+    dataLoader = FileDataLoader('Data/archive_opm.csv')
+
 print("Done")
 print("")
 
